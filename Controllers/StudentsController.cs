@@ -19,8 +19,52 @@ namespace ContosoUniversity.Controllers {
         }
 
         // GET: Students
-        public async Task<IActionResult> Index() {
-            return View(await _context.Students.ToListAsync());
+        public async Task<IActionResult> Index(string sortOrder, string currentFilter, string searchString, int? pageNumber) {
+            // default code for Index:
+            //return View(await _context.Students.ToListAsync());
+
+            // the sortOrder parameter allows a query string to be derived from the app's URL (either "Name" or "Date")
+            ViewData["CurrentSort"] = sortOrder;
+            ViewData["NameSortParm"] = String.IsNullOrEmpty(sortOrder) ? "name_desc" : "";
+            ViewData["DateSortParm"] = sortOrder == "Date" ? "date_desc" : "Date";
+
+            if (searchString != null) {
+                pageNumber = 1;  // set the current page number to 1 whenever the user enters a search string during paging
+            } else {
+                searchString = currentFilter;  // otherwise, set the search string to the most recent filter text
+            }
+
+            ViewData["CurrentFilter"] = searchString;
+            var students = from s in _context.Students select s;
+
+            // add to the LINQ statement a condition where only the FirstMidName or LastName of a student is included in the searchString variable
+            if (!String.IsNullOrEmpty(searchString)) {
+                students = students.Where(students => students.LastName.Contains(searchString) || s.FirstMidName.Contains(searchString));
+            }
+
+            // based on what the user selects from the webpage, a corresponding column heading is displayed via sortOrder
+            switch (sortOrder) {
+                case "name_desc":
+                    students = students.OrderByDescending(s => s.LastName);
+                    break;
+                case "Date":
+                    students = students.OrderBy(s => s.EnrollmentDate);
+                    break;
+                case "date_desc":
+                    students = students.OrderByDescending(s => s.EnrollmentDate);
+                    break;
+                default:
+                    students = students.OrderBy(s => s.LastName);  // the fall-through case will display the student's last name in ascending order
+                    break;
+            }
+
+            int pageSize = 3;
+
+            // returns a collection of Student objects that will populate the Index.cshtml page
+            //return View(await students.AsNoTracking().ToListAsync());
+
+            // returns a paginated list based on a Student query
+            return View(await PaginatedList<Student>.CreateAsync(students.AsNoTracking(), pageNumber ?? 1, pageSize));
         }
 
         // GET: Students/Details/5
@@ -34,7 +78,7 @@ namespace ContosoUniversity.Controllers {
                 .Include(s => s.Enrollments).ThenInclude(e => e.Course).AsNoTracking()  // AsNoTracking() may help overall app performance in cases where the data entity isn't likely to be updated any time soon 
                 .FirstOrDefaultAsync(m => m.ID == id);
 
-
+            // if no Student objects are available signal using the NotFound() method
             if (student == null) {
                 return NotFound();
             }
